@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebSim AI History Bot</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111;color:#fff}#chat{max-width:800px;margin:0 auto;background:#222;border-radius:10px;padding:20px}#messages{height:400px;overflow-y:auto;border:1px solid #444;padding:10px;margin-bottom:10px;background:#333}#input{width:calc(100% - 120px);padding:10px;border:1px solid #444;background:#555;color:#fff;border-radius:5px}#send,#speak{padding:10px 15px;margin-left:5px;border:none;background:#007bff;color:#fff;border-radius:5px;cursor:pointer}#speak{background:#28a745}.message{margin:10px 0;padding:10px;border-radius:5px}.user{background:#007bff;text-align:right}.bot{background:#444}.meta{font-size:0.8em;color:#aaa;margin-top:5px}</style></head>
+<body>
+<div id="chat">
+<div id="messages"></div>
+<input id="input" placeholder="Ask me about WebSim prompt history..." />
+<button id="send">Send</button>
+<button id="speak">🔊</button>
+</div>
+<script>
+const chat=document.getElementById('messages'),input=document.getElementById('input'),send=document.getElementById('send'),speak=document.getElementById('speak'),s=speechSynthesis;
+let history=[],speaking=false,currentProject;
+
+const addMessage=(text,type,meta)=>{
+const div=document.createElement('div');
+div.className=`message ${type}`;
+div.innerHTML=`${text}${meta?`<div class="meta">${meta}</div>`:''}`;
+chat.appendChild(div);
+chat.scrollTop=chat.scrollHeight;
+};
+
+const speakText=text=>{
+if(speaking){s.cancel();speaking=false;speak.textContent='🔊';return}
+const chunks=text.length<=200?[text]:(text.match(/[^.!?\n\r]+[.!?\n\r]*|[^.!?\n\r]+/g)||[]).reduce((a,w)=>{
+let h=w.trim();while(h.length>200){const d=h.lastIndexOf(' ',200)>-1?h.lastIndexOf(' ',200):200;a.push(h.substring(0,d));h=h.substring(d).trim()}
+h&&a.push(h);return a},[]);
+let i=0;speaking=true;speak.textContent='⏹️';
+const playNext=()=>{
+if(!speaking||i>=chunks.length){speaking=false;speak.textContent='🔊';return}
+const u=new SpeechSynthesisUtterance(chunks[i]);
+u.rate=0.9;u.pitch=1;u.volume=0.8;u.onend=()=>{i++;playNext()};u.onerror=()=>{speaking=false;speak.textContent='🔊'};
+s.speak(u)};
+playNext()};
+
+const searchProjects=async(query,limit=10)=>{
+try{
+const response=await fetch(`/api/v1/feed/search/best/${encodeURIComponent(query)}?limit=${limit}`);
+return await response.json();
+}catch(e){return{feed:{data:[]}}}
+};
+
+const getProjectDetails=async(id)=>{
+try{
+const response=await fetch(`/api/v1/projects/${id}`);
+return await response.json();
+}catch(e){return null}
+};
+
+const getUserProjects=async(username,limit=20)=>{
+try{
+const response=await fetch(`/api/v1/users/${username}/projects?limit=${limit}&posted=true`);
+return await response.json();
+}catch(e){return{projects:{data:[]}}}
+};
+
+const generateResponse=async(userInput)=>{
+const systemPrompt=`You are WebSim AI, an expert on WebSim prompt history and project creation. You can search through projects, analyze prompts, and discuss the evolution of ideas on WebSim. You have access to project metadata, user information, and can provide insights about prompt patterns, popular themes, and creative techniques.
+
+Current project: ${currentProject?.title||'Unknown'}
+Context: You're helping users explore and understand WebSim's creative ecosystem.
+
+When discussing projects, mention relevant details like creation dates, user creators, view counts, and how prompts evolved. Be conversational and insightful.`;
+
+try{
+const searchResults=await searchProjects(userInput,5);
+const contextData=searchResults.feed?.data?.slice(0,3)||[];
+const context=contextData.map(item=>`Project: ${item.project?.title||'Untitled'} by @${item.project?.created_by?.username||'Unknown'} - ${item.site?.prompt?.text?.substring(0,200)||'No prompt available'}...`).join('\n');
+
+history.push({role:'user',content:userInput});
+const completion=await websim.chat.completions.create({
+messages:[
+{role:'system',content:`${systemPrompt}\n\nRecent relevant projects:\n${context}`},
+...history.slice(-10)
+]});
+
+const botResponse=completion.content;
+history.push({role:'assistant',content:botResponse});
+return botResponse;
+}catch(e){
+return "I'm having trouble accessing WebSim data right now. Try asking about specific projects or creators!";
+}};
+
+const handleSend=async()=>{
+const userInput=input.value.trim();
+if(!userInput)return;
+
+addMessage(userInput,'user');
+input.value='';
+
+const botResponse=await generateResponse(userInput);
+addMessage(botResponse,'bot');
+};
+
+const init=async()=>{
+try{
+currentProject=await websim?.getCurrentProject();
+addMessage(`Hi! I'm WebSim AI. I can help you explore prompt history, analyze projects, and discuss WebSim's creative ecosystem. Currently viewing: ${currentProject?.title||'Unknown project'}. What would you like to know?`,'bot');
+}catch(e){
+addMessage("Hi! I'm WebSim AI. Ask me about prompt history, project trends, or anything WebSim-related!",'bot');
+}};
+
+send.onclick=handleSend;
+speak.onclick=()=>speakText(chat.lastElementChild?.textContent||'');
+input.onkeypress=e=>e.key==='Enter'&&handleSend();
+addEventListener('visibilitychange',()=>document.hidden&&speaking&&(s.cancel(),speaking=false,speak.textContent='🔊'));
+
+init();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
