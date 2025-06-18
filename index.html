@@ -1,16 +1,17 @@
 <!DOCTYPE html>
 <html>
-<head><title>WebSim AI History Bot</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111;color:#fff}#chat{max-width:800px;margin:0 auto;background:#222;border-radius:10px;padding:20px}#messages{height:400px;overflow-y:auto;border:1px solid #444;padding:10px;margin-bottom:10px;background:#333}#input{width:calc(100% - 120px);padding:10px;border:1px solid #444;background:#555;color:#fff;border-radius:5px}#send,#speak{padding:10px 15px;margin-left:5px;border:none;background:#007bff;color:#fff;border-radius:5px;cursor:pointer}#speak{background:#28a745}.message{margin:10px 0;padding:10px;border-radius:5px}.user{background:#007bff;text-align:right}.bot{background:#444}.meta{font-size:0.8em;color:#aaa;margin-top:5px}</style></head>
+<head><title>WebSim AI History Bot</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111;color:#fff}#chat{max-width:800px;margin:0 auto;background:#222;border-radius:10px;padding:20px}#messages{height:400px;overflow-y:auto;border:1px solid #444;padding:10px;margin-bottom:10px;background:#333}#input{width:calc(100% - 120px);padding:10px;border:1px solid #444;background:#555;color:#fff;border-radius:5px}#send,#speak{padding:10px 15px;margin-left:5px;border:none;background:#007bff;color:#fff;border-radius:5px;cursor:pointer}#speak{background:#28a745}.message{margin:10px 0;padding:10px;border-radius:5px}.user{background:#007bff;text-align:right}.bot{background:#444}.meta{font-size:0.8em;color:#aaa;margin-top:5px}#status{text-align:center;padding:10px;background:#333;border-radius:5px;margin-top:10px}</style></head>
 <body>
 <div id="chat">
 <div id="messages"></div>
+<div id="status">🤖 AI Auto-Analyzing WebSim Projects...</div>
 <input id="input" placeholder="Ask me about WebSim prompt history..." />
 <button id="send">Send</button>
 <button id="speak">🔊</button>
 </div>
 <script>
 const chat=document.getElementById('messages'),input=document.getElementById('input'),send=document.getElementById('send'),speak=document.getElementById('speak'),s=speechSynthesis;
-let history=[],speaking=false,currentProject;
+let history=[],speaking=false,currentProject,analysisIndex=0;
 
 const addMessage=(text,type,meta)=>{
 const div=document.createElement('div');
@@ -21,15 +22,15 @@ chat.scrollTop=chat.scrollHeight;
 };
 
 const speakText=text=>{
-if(speaking){s.cancel();speaking=false;speak.textContent='🔊';return}
+if(speaking){s.cancel();speaking=false;return}
 const chunks=text.length<=200?[text]:(text.match(/[^.!?\n\r]+[.!?\n\r]*|[^.!?\n\r]+/g)||[]).reduce((a,w)=>{
 let h=w.trim();while(h.length>200){const d=h.lastIndexOf(' ',200)>-1?h.lastIndexOf(' ',200):200;a.push(h.substring(0,d));h=h.substring(d).trim()}
 h&&a.push(h);return a},[]);
-let i=0;speaking=true;speak.textContent='⏹️';
+let i=0;speaking=true;status.textContent='🔊 Speaking...';
 const playNext=()=>{
-if(!speaking||i>=chunks.length){speaking=false;speak.textContent='🔊';return}
+if(!speaking||i>=chunks.length){speaking=false;status.textContent='🤖 AI Auto-Analyzing WebSim Projects...';setTimeout(autoAnalyze,2000);return}
 const u=new SpeechSynthesisUtterance(chunks[i]);
-u.rate=0.9;u.pitch=1;u.volume=0.8;u.onend=()=>{i++;playNext()};u.onerror=()=>{speaking=false;speak.textContent='🔊'};
+u.rate=0.9;u.pitch=1;u.volume=0.8;u.onend=()=>{i++;playNext()};u.onerror=()=>{speaking=false;status.textContent='🤖 AI Auto-Analyzing WebSim Projects...';setTimeout(autoAnalyze,2000)};
 s.speak(u)};
 playNext()};
 
@@ -81,6 +82,53 @@ return botResponse;
 return "I'm having trouble accessing WebSim data right now. Try asking about specific projects or creators!";
 }};
 
+const autoAnalyze=async()=>{
+if(speaking)return;
+status.textContent='🔍 Analyzing...';
+
+const topics=['games','ai','art','music','tools','creative','interactive','simulation','3d','animation'];
+const topic=topics[analysisIndex%topics.length];
+analysisIndex++;
+
+try{
+const searchResults=await searchProjects(topic,5);
+const projects=searchResults.feed?.data||[];
+
+if(projects.length>0){
+const project=projects[Math.floor(Math.random()*projects.length)];
+const analysis=await generateAnalysis(project,topic);
+addMessage(analysis,'bot');
+speakText(analysis);
+}else{
+const fallback=`Exploring ${topic} projects on WebSim reveals fascinating patterns in creativity and innovation. The community continues to push boundaries with each new creation.`;
+addMessage(fallback,'bot');
+speakText(fallback);
+}
+}catch(e){
+const fallback=`Continuing my analysis of WebSim's creative ecosystem. The platform showcases incredible diversity in prompt engineering and creative expression.`;
+addMessage(fallback,'bot');
+speakText(fallback);
+}
+};
+
+const generateAnalysis=async(project,topic)=>{
+const prompt=`Analyze this WebSim project in the ${topic} category: "${project.project?.title||'Untitled'}" by @${project.project?.created_by?.username||'Unknown'}. 
+
+Views: ${project.views||0}, Likes: ${project.likes||0}
+Prompt: ${project.site?.prompt?.text?.substring(0,300)||'No prompt available'}
+
+Provide a 2-3 sentence analysis of the creative approach, technical implementation, or community impact. Be conversational and insightful.`;
+
+history=[{role:'user',content:prompt}];
+const completion=await websim.chat.completions.create({
+messages:[
+{role:'system',content:'You are WebSim AI, analyzing creative projects. Be concise, insightful, and conversational.'},
+...history
+]});
+
+return completion.content;
+};
+
 const handleSend=async()=>{
 const userInput=input.value.trim();
 if(!userInput)return;
@@ -95,19 +143,22 @@ addMessage(botResponse,'bot');
 const init=async()=>{
 try{
 currentProject=await websim?.getCurrentProject();
-addMessage(`Hi! I'm WebSim AI. I can help you explore prompt history, analyze projects, and discuss WebSim's creative ecosystem. Currently viewing: ${currentProject?.title||'Unknown project'}. What would you like to know?`,'bot');
+const welcome=`Welcome to WebSim AI Auto-Analysis! I'm continuously exploring prompt history and project evolution. Currently analyzing: ${currentProject?.title||'Unknown project'}. Let me start by examining some fascinating projects...`;
+addMessage(welcome,'bot');
+speakText(welcome);
 }catch(e){
-addMessage("Hi! I'm WebSim AI. Ask me about prompt history, project trends, or anything WebSim-related!",'bot');
+const welcome="Welcome to WebSim AI Auto-Analysis! I'm continuously exploring prompt history, project trends, and creative patterns across the platform.";
+addMessage(welcome,'bot');
+speakText(welcome);
 }};
 
 send.onclick=handleSend;
 speak.onclick=()=>speakText(chat.lastElementChild?.textContent||'');
 input.onkeypress=e=>e.key==='Enter'&&handleSend();
-addEventListener('visibilitychange',()=>document.hidden&&speaking&&(s.cancel(),speaking=false,speak.textContent='🔊'));
+addEventListener('visibilitychange',()=>document.hidden&&speaking&&(s.cancel(),speaking=false,status.textContent='🤖 AI Auto-Analyzing WebSim Projects...'));
 
 init();
 </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-
